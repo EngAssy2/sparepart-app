@@ -1,0 +1,50 @@
+{
+    "Category": [
+        "CRITICAL PART",
+        "NO CRITICAL PART"
+    ],
+    "Criteria": [
+        "CONSUMABLE PART",
+        "REPLACEMENT PART",
+        "INSURANCE PART"
+    ],
+    "StatusList": [
+        "STOCK ENOUGH",
+        "ORDER PART",
+        "URGENT PART"
+    ],
+    "PriorityList": [
+        "1st Priority",
+        "2nd Priority",
+        "No Request"
+    ],
+    "ModelList": [
+        "Cable Light No. 2",
+        "Coral - Color Sensor",
+        "Coral - Dual Motor",
+        "Coral - Single Motor",
+        "Fx Light Automation",
+        "Fx Light Manual",
+        "Common Part",
+        "Motor No. 2",
+        "Journey",
+        "Howler/Noise/Voice",
+        "Convoy Battery Box",
+        "Pluto"
+    ],
+    "SectionList": [
+        "Process Engineering",
+        "Test Engineering",
+        "Automation Engineering"
+    ],
+    "JobLevelList": [
+        "Intern",
+        "Technician",
+        "Senior Technician",
+        "Assistant Engineer",
+        "Engineer",
+        "Senior Engineer",
+        "Executive Engineer",
+        "Manager"
+    ]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "Tables_in_sparepartinventorydb": "auto_part_number_seq"
+  },
+  {
+    "Tables_in_sparepartinventorydb": "auto_transaction_seq"
+  },
+  {
+    "Tables_in_sparepartinventorydb": "mail_schedulare"
+  },
+  {
+    "Tables_in_sparepartinventorydb": "masterdata"
+  },
+  {
+    "Tables_in_sparepartinventorydb": "transaction_logging"
+  },
+  {
+    "Tables_in_sparepartinventorydb": "userlist"
+  }
+]
