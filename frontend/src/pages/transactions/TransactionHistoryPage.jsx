@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppShell from '../../components/layout/AppShell';
 import client from '../../api/client';
 import dayjs from 'dayjs';
@@ -15,19 +16,46 @@ const TXN_CLASS = {
 const TXN_TYPES = ['', 'Stock In', 'Stock Out', 'Register', 'modify', 'delete'];
 
 export default function TransactionHistoryPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [txns, setTxns] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
-    const [page, setPage] = useState(1);
+
+    // Helper to get initial state from URL or sessionStorage
+    const getInitial = (key, urlKey, defaultValue) => {
+        const fromUrl = searchParams.get(urlKey);
+        if (fromUrl !== null) return fromUrl;
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('transaction_history_filters') || '{}');
+            return saved[key] !== undefined ? saved[key] : defaultValue;
+        } catch { return defaultValue; }
+    };
+
+    const [page, setPage] = useState(() => parseInt(getInitial('page', 'page', 1)));
     const limit = 25;
 
     // Filters
-    const [search, setSearch] = useState('');
-    const [type, setType] = useState('');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
-    const [ww, setWw] = useState('');
+    const [search, setSearch] = useState(() => getInitial('search', 'q', ''));
+    const [type, setType] = useState(() => getInitial('type', 'type', ''));
+    const [dateFrom, setDateFrom] = useState(() => getInitial('dateFrom', 'dateFrom', ''));
+    const [dateTo, setDateTo] = useState(() => getInitial('dateTo', 'dateTo', ''));
+    const [ww, setWw] = useState(() => getInitial('ww', 'ww', ''));
+
+    // Sync to sessionStorage and URL
+    useEffect(() => {
+        const filters = { search, type, dateFrom, dateTo, ww, page };
+        sessionStorage.setItem('transaction_history_filters', JSON.stringify(filters));
+
+        const params = {};
+        if (search) params.q = search;
+        if (type) params.type = type;
+        if (dateFrom) params.dateFrom = dateFrom;
+        if (dateTo) params.dateTo = dateTo;
+        if (ww) params.ww = ww;
+        if (page > 1) params.page = page;
+        setSearchParams(params, { replace: true });
+    }, [search, type, dateFrom, dateTo, ww, page]);
 
     const fetchTxns = useCallback(async () => {
         setLoading(true);

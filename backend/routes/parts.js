@@ -17,7 +17,7 @@ function calculateDerivedFields(body, existingData = {}) {
     let Quantity_Use_Each_Machine = Number(body.Quantity_Use_Each_Machine !== undefined ? body.Quantity_Use_Each_Machine : (existingData.Quantity_Use_Each_Machine || 0));
     let Total_Machine = Number(body.Total_Machine !== undefined ? body.Total_Machine : (existingData.Total_Machine || 0));
     let Part_Criteria = body.Part_Criteria !== undefined ? body.Part_Criteria : (existingData.Part_Criteria || '');
-    
+
     let Safety_Stock = Number(body.Safety_Stock !== undefined ? body.Safety_Stock : (existingData.Safety_Stock || 0));
     let Part_Status = body.Part_Status !== undefined ? body.Part_Status : (existingData.Part_Status || 'Active');
     let Part_Category = body.Part_Category !== undefined ? body.Part_Category : (existingData.Part_Category || '');
@@ -71,7 +71,7 @@ function calculateDerivedFields(body, existingData = {}) {
 // GET /api/parts
 router.get('/', verifyToken, async (req, res) => {
     try {
-        const { search, category, section, status, priority, stock, page = 1, limit = 20 } = req.query;
+        const { search, category, model, section, status, priority, stock, page = 1, limit = 20 } = req.query;
         const offset = (parseInt(page) - 1) * parseInt(limit);
         let where = [];
         let params = [];
@@ -81,6 +81,7 @@ router.get('/', verifyToken, async (req, res) => {
             params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
         if (category) { where.push('Part_Category = ?'); params.push(category); }
+        if (model) { where.push('Model = ?'); params.push(model); }
         if (section) { where.push('Section = ?'); params.push(section); }
         if (status) { where.push('Part_Status = ?'); params.push(status); }
         if (priority) { where.push('Priority_Level = ?'); params.push(priority); }
@@ -173,11 +174,15 @@ router.post('/', verifyToken, requireLevel(2), async (req, res) => {
         const {
             Part_Number, Part_Name,
             Model = '', Brand = '', Supplier = '', Section = '',
-            Item_Description = '', Location = '',
+            Location = '',
             Image_Path = null, Datasheet_Path = null,
-            Visual_Embedding = null
+            Visual_Embedding = null,
+            Remark = ''
         } = req.body;
-        
+
+        const Item_Description = Remark !== undefined ? Remark : (req.body.Item_Description || '');
+        //console.log(`[DEBUG] Registering part. Remark: "${Remark}", Final Item_Description: "${Item_Description}"`);
+
         const derived = calculateDerivedFields(req.body);
 
         if (Part_Number) {
@@ -205,11 +210,12 @@ router.post('/', verifyToken, requireLevel(2), async (req, res) => {
         const [seqResult] = await conn.query('INSERT INTO auto_transaction_seq () VALUES ()');
         const txnId = `TXN-${String(seqResult.insertId).padStart(6, '0')}`;
         const ww = getWorkWeek(now);
+        const txnRemark = Remark ? `Register new part: ${Part_Name} (${Remark})` : `Register new part: ${Part_Name}`;
         await conn.query(
             `INSERT INTO transaction_logging 
        (SEI_Transacion_ID, Date_Transaction, Work_Week, Part_Number, Transaction_Type, Quantity, User_Badge, User_Name, Machine_Name, Remark)
        VALUES (?,?,?,?,?,?,?,?,?,?)`,
-            [txnId, now, ww, Part_Number, 'Register', derived.Quantity, req.user.badge, req.user.name, '', `Register new part: ${Part_Name}`]
+            [txnId, now, ww, Part_Number, 'Register', derived.Quantity, req.user.badge, req.user.name, '', txnRemark]
         );
 
         // Fetch back the actual SEI_Part_Number generated/overwritten by the database trigger
@@ -240,10 +246,13 @@ router.put('/:id', verifyToken, requireLevel(2), async (req, res) => {
             Part_Number = existing[0].Part_Number,
             Part_Name = existing[0].Part_Name,
             Model = existing[0].Model, Brand = existing[0].Brand, Supplier = existing[0].Supplier, Section = existing[0].Section,
-            Item_Description = existing[0].Item_Description, Location = existing[0].Location,
-            Image_Path = existing[0].Image_Path, Datasheet_Path = existing[0].Datasheet_Path, 
+            Location = existing[0].Location,
+            Image_Path = existing[0].Image_Path, Datasheet_Path = existing[0].Datasheet_Path,
             Visual_Embedding = existing[0].Visual_Embedding, Remark
         } = req.body;
+
+        const Item_Description = Remark !== undefined ? Remark : (req.body.Item_Description || existing[0].Item_Description || '');
+        console.log(`[DEBUG] Updating part ${req.params.id}. Remark: "${Remark}", Final Item_Description: "${Item_Description}"`);
 
         const derived = calculateDerivedFields(req.body, existing[0]);
 
@@ -289,6 +298,46 @@ router.put('/:id', verifyToken, requireLevel(2), async (req, res) => {
         await conn.rollback();
         console.error(err);
         res.status(500).json({ error: 'Server error.' });
+    } finally {
+        conn.release();
+    }
+});
+
+// BATCH DELETE /api/parts/batch (Admin and above)
+router.delete('/batch', verifyToken, requireLevel(2), async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'No IDs provided for deletion.' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const now = new Date();
+        const ww = getWorkWeek(now);
+
+        for (const id of ids) {
+            const [existing] = await conn.query('SELECT * FROM masterdata WHERE SEI_Part_Number = ?', [id]);
+            if (existing[0]) {
+                await conn.query('DELETE FROM masterdata WHERE SEI_Part_Number = ?', [id]);
+
+                // Log deletion
+                const [seqResult] = await conn.query('INSERT INTO auto_transaction_seq () VALUES ()');
+                const txnId = `TXN-${String(seqResult.insertId).padStart(6, '0')}`;
+                await conn.query(
+                    `INSERT INTO transaction_logging (SEI_Transacion_ID, Date_Transaction, Work_Week, Part_Number, Transaction_Type, Quantity, User_Badge, User_Name, Machine_Name, Remark)
+               VALUES (?,?,?,?,?,?,?,?,?,?)`,
+                    [txnId, now, ww, existing[0].Part_Number, 'delete', 0, req.user.badge, req.user.name, '', `Batch Deleted part: ${existing[0].Part_Name}`]
+                );
+            }
+        }
+
+        await conn.commit();
+        res.json({ message: `${ids.length} parts deleted successfully.` });
+    } catch (err) {
+        await conn.rollback();
+        console.error(err);
+        res.status(500).json({ error: 'Server error during batch deletion.' });
     } finally {
         conn.release();
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import AppShell from '../../components/layout/AppShell';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -21,31 +21,52 @@ function CategoryBadge({ category }) {
 }
 
 export default function PartsListPage() {
+    const [searchParams, setSearchParams] = useSearchParams();
+    
     const [parts, setParts] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState('');
-    const [category, setCategory] = useState('');
-    const [status, setStatus] = useState('');
-    const [priority, setPriority] = useState('');
-    const [page, setPage] = useState(1);
+
+    // Helper to get initial state from URL or sessionStorage
+    const getInitial = (key, urlKey, defaultValue) => {
+        const fromUrl = searchParams.get(urlKey);
+        if (fromUrl !== null) return fromUrl;
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('parts_list_filters') || '{}');
+            return saved[key] !== undefined ? saved[key] : defaultValue;
+        } catch { return defaultValue; }
+    };
+
+    const [search, setSearch] = useState(() => getInitial('search', 'q', ''));
+    const [category, setCategory] = useState(() => getInitial('category', 'category', ''));
+    const [model, setModel] = useState(() => getInitial('model', 'model', ''));
+    const [section, setSection] = useState(() => getInitial('section', 'section', ''));
+    const [status, setStatus] = useState(() => getInitial('status', 'status', ''));
+    const [priority, setPriority] = useState(() => getInitial('priority', 'priority', ''));
+    const [page, setPage] = useState(() => parseInt(getInitial('page', 'page', 1)));
+    const [stockFilter, setStockFilter] = useState(() => getInitial('stockFilter', 'stock', ''));
+
     const [confirmModal, setConfirmModal] = useState(null);
+    const [batchDeleteModal, setBatchDeleteModal] = useState(false);
+    const [batchStep, setBatchStep] = useState(1);
+    const [batchInput, setBatchInput] = useState('');
+    const [selectedIds, setSelectedIds] = useState([]);
     const [exporting, setExporting] = useState(false);
     const limit = 20;
 
-    const location = useLocation();
-    const queryParams = new URLSearchParams(location.search);
-    const initialStock = queryParams.get('stock') === 'low' ? 'low' : '';
-
-    const [stockFilter, setStockFilter] = useState(initialStock);
-    
     const { isAdmin } = useAuth();
     const navigate = useNavigate();
+
+    // Sync to sessionStorage
+    useEffect(() => {
+        const filters = { search, category, model, section, status, priority, page, stockFilter };
+        sessionStorage.setItem('parts_list_filters', JSON.stringify(filters));
+    }, [search, category, model, section, status, priority, page, stockFilter]);
 
     const fetchParts = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page, limit, search, category, status, priority, stock: stockFilter };
+            const params = { page, limit, search, category, model, section, status, priority, stock: stockFilter };
             const res = await client.get('/parts', { params });
 
             // Ensure we always get an array
@@ -55,9 +76,7 @@ export default function PartsListPage() {
 
             setParts(partsData);
             setTotal(res.data?.total || partsData.length);
-            console.log('API Response:', res.data);
-            console.log('Type:', typeof res.data);
-            console.log('Is Array:', Array.isArray(res.data));
+            setSelectedIds([]); // Clear selection on fetch
         } catch (err) {
             console.error('Fetch parts error:', err);
             setParts([]);
@@ -65,16 +84,21 @@ export default function PartsListPage() {
         } finally {
             setLoading(false);
         }
-    }, [page, search, category, status, priority, stockFilter]);
+    }, [page, search, category, model, section, status, priority, stockFilter]);
 
     useEffect(() => {
-        const queryParams = new URLSearchParams(location.search);
-        const urlStock = queryParams.get('stock') === 'low' ? 'low' : '';
-        if (urlStock !== stockFilter) {
-            setStockFilter(urlStock);
-            setPage(1);
-        }
-    }, [location.search]);
+        const params = {};
+        if (search) params.q = search;
+        if (category) params.category = category;
+        if (model) params.model = model;
+        if (section) params.section = section;
+        if (status) params.status = status;
+        if (priority) params.priority = priority;
+        if (stockFilter) params.stock = stockFilter;
+        if (page > 1) params.page = page;
+        
+        setSearchParams(params, { replace: true });
+    }, [search, category, model, section, status, priority, stockFilter, page]);
 
     useEffect(() => { fetchParts(); }, [fetchParts]);
 
@@ -104,10 +128,32 @@ export default function PartsListPage() {
         }
     };
 
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.length === parts.length) setSelectedIds([]);
+        else setSelectedIds(parts.map(p => p.SEI_Part_Number));
+    };
+
+    const executeBatchDelete = async () => {
+        try {
+            await client.delete('/parts/batch', { data: { ids: selectedIds } });
+            fetchParts();
+            setBatchDeleteModal(false);
+            setBatchStep(1);
+            setBatchInput('');
+            setSelectedIds([]);
+        } catch (err) {
+            alert(err.response?.data?.message || 'Batch delete failed');
+        }
+    };
+
     const handleExport = async () => {
         try {
             setExporting(true);
-            const params = { page: 1, limit: 10000, search, category, status, priority, stock: stockFilter };
+            const params = { page: 1, limit: 10000, search, category, model, section, status, priority, stock: stockFilter };
             const res = await client.get('/parts', { params });
             
             const rawData = Array.isArray(res.data) ? res.data :
@@ -154,6 +200,11 @@ export default function PartsListPage() {
                     <div className="page-subtitle">{total.toLocaleString()} parts registered</div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                    {isAdmin && selectedIds.length > 0 && (
+                        <button className="btn btn-danger" onClick={() => { setBatchDeleteModal(true); setBatchStep(1); }}>
+                            <Trash2 size={15} /> Delete {selectedIds.length} Selected
+                        </button>
+                    )}
                     <button className="btn btn-secondary" onClick={handleExport} disabled={exporting}>
                         {exporting ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : <Download size={15} />}
                         Export
@@ -184,6 +235,12 @@ export default function PartsListPage() {
                 <select className="select-ctrl" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
                     {['', ...config.Category].map(c => <option key={c} value={c}>{c || 'All Categories'}</option>)}
                 </select>
+                <select className="select-ctrl" value={model} onChange={(e) => { setModel(e.target.value); setPage(1); }}>
+                    {['', ...config.ModelList].map(m => <option key={m} value={m}>{m || 'All Models'}</option>)}
+                </select>
+                <select className="select-ctrl" value={section} onChange={(e) => { setSection(e.target.value); setPage(1); }}>
+                    {['', ...config.SectionList].map(s => <option key={s} value={s}>{s || 'All Sections'}</option>)}
+                </select>
                 <select className="select-ctrl" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                     {['', ...config.StatusList].map(s => <option key={s} value={s}>{s || 'All Statuses'}</option>)}
                 </select>
@@ -196,6 +253,15 @@ export default function PartsListPage() {
                 <table>
                     <thead>
                         <tr>
+                            {isAdmin && (
+                                <th style={{ width: 40 }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={parts.length > 0 && selectedIds.length === parts.length} 
+                                        onChange={toggleSelectAll} 
+                                    />
+                                </th>
+                            )}
                             <th>SEI Part #</th>
                             <th>Part Number</th>
                             <th>Name</th>
@@ -222,7 +288,16 @@ export default function PartsListPage() {
                             parts.map((p) => {
                                 const lowStock = (p.Quantity ?? 0) <= (p.Safety_Stock ?? 0);
                                 return (
-                                    <tr key={p.SEI_Part_Number}>
+                                    <tr key={p.SEI_Part_Number} className={selectedIds.includes(p.SEI_Part_Number) ? 'row-selected' : ''}>
+                                        {isAdmin && (
+                                            <td>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedIds.includes(p.SEI_Part_Number)} 
+                                                    onChange={() => toggleSelect(p.SEI_Part_Number)} 
+                                                />
+                                            </td>
+                                        )}
                                         <td className="td-mono">{p.SEI_Part_Number}</td>
                                         <td className="td-mono">{p.Part_Number}</td>
                                         <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.Part_Name}</td>
@@ -298,6 +373,62 @@ export default function PartsListPage() {
                             <button className="btn btn-danger" onClick={executeDelete}>
                                 Delete
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Batch Delete Modal */}
+            {batchDeleteModal && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal" style={{ maxWidth: 450 }}>
+                        <div className="modal-header">
+                            <div className="modal-title" style={{ color: 'var(--danger)' }}>
+                                {batchStep === 1 ? 'Batch Deletion' : 'Security Confirmation'}
+                            </div>
+                            <button className="btn btn-ghost" onClick={() => setBatchDeleteModal(false)}>✕</button>
+                        </div>
+                        
+                        <div style={{ padding: '20px 0' }}>
+                            {batchStep === 1 ? (
+                                <>
+                                    <p style={{ marginBottom: 12, fontSize: 16 }}>
+                                        You are about to delete <strong>{selectedIds.length}</strong> selected parts.
+                                    </p>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+                                        This action will permanently remove these parts from the inventory and all associated records.
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <p style={{ marginBottom: 16, fontWeight: 500 }}>
+                                        To confirm deletion, please type <span style={{ color: 'var(--danger)', fontWeight: 700 }}>DELETE</span> in the box below:
+                                    </p>
+                                    <input 
+                                        className="input" 
+                                        placeholder='Type "DELETE" here...'
+                                        value={batchInput}
+                                        onChange={(e) => setBatchInput(e.target.value)}
+                                        autoFocus
+                                    />
+                                </>
+                            )}
+                        </div>
+
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setBatchDeleteModal(false)}>Cancel</button>
+                            {batchStep === 1 ? (
+                                <button className="btn btn-danger" onClick={() => setBatchStep(2)}>
+                                    Confirm Batch Delete
+                                </button>
+                            ) : (
+                                <button 
+                                    className="btn btn-danger" 
+                                    disabled={batchInput !== 'DELETE'} 
+                                    onClick={executeBatchDelete}
+                                >
+                                    Permanently Delete {selectedIds.length} Items
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

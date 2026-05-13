@@ -48,10 +48,24 @@ const BoxIcon = ({ size = 24, color = "currentColor", ...props }) => (
 export default function PartLocationPage() {
     const [parts, setParts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState('');
+    const [searchParams, setSearchParams] = useSearchParams();
+    
+    // Helper to get initial search from URL or sessionStorage
+    const getInitialSearch = () => {
+        const fromUrl = searchParams.get('q');
+        if (fromUrl !== null) return fromUrl;
+        return sessionStorage.getItem('parts_location_search') || '';
+    };
+
+    const [search, setSearch] = useState(getInitialSearch);
+
+    // Sync search to sessionStorage
+    useEffect(() => {
+        sessionStorage.setItem('parts_location_search', search);
+    }, [search]);
+
     const [selectedChild, setSelectedChild] = useState(null);
     const navigate = useNavigate();
-    const [searchParams, setSearchParams] = useSearchParams();
     const location = useLocation();
 
     // Derive selectedParentLocName from URL query param so browser back works
@@ -59,11 +73,15 @@ export default function PartLocationPage() {
     const childFromUrl = searchParams.get('child') || null;
 
     const openLocation = (group) => {
-        setSearchParams({ parent: group.parentLocation });
+        const params = { parent: group.parentLocation };
+        if (search) params.q = search;
+        setSearchParams(params);
     };
 
     const openChild = (childGroup) => {
-        setSearchParams({ parent: selectedParentLocName, child: childGroup.childName });
+        const params = { parent: selectedParentLocName, child: childGroup.childName };
+        if (search) params.q = search;
+        setSearchParams(params);
         setSelectedChild(childGroup);
     };
 
@@ -71,13 +89,26 @@ export default function PartLocationPage() {
         setSelectedChild(null);
         // Remove child param from URL but keep parent
         if (selectedParentLocName) {
-            setSearchParams({ parent: selectedParentLocName });
+            const params = { parent: selectedParentLocName };
+            if (search) params.q = search;
+            setSearchParams(params);
         }
     };
 
     const goBackToParents = () => {
-        setSearchParams({});
+        const params = {};
+        if (search) params.q = search;
+        setSearchParams(params);
     };
+
+    useEffect(() => {
+        const params = {};
+        if (search) params.q = search;
+        if (selectedParentLocName) params.parent = selectedParentLocName;
+        if (childFromUrl) params.child = childFromUrl;
+        
+        setSearchParams(params, { replace: true });
+    }, [search, selectedParentLocName, childFromUrl]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Search, Package, MapPin, Tag, FileText, Image as ImageIcon, PackageSearch, Camera, ScanText, X, Check, SwitchCamera } from 'lucide-react';
+import { ArrowLeft, Search, Package, MapPin, Tag, FileText, Image as ImageIcon, PackageSearch, Camera, ScanText, X, Check, SwitchCamera, ZoomIn } from 'lucide-react';
 
 const API_BASE = '/api/public';
 
@@ -16,6 +16,7 @@ export default function PublicPartInfoPage() {
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [showDatasheet, setShowDatasheet] = useState(false);
+    const [showImageModal, setShowImageModal] = useState(false);
 
     // Visual Search State
     const [isVisualSearch, setIsVisualSearch] = useState(false);
@@ -37,6 +38,15 @@ export default function PublicPartInfoPage() {
             .then(data => setAvailableParts(Array.isArray(data) ? data : []))
             .catch(() => {});
     }, []);
+
+    // Close image lightbox on Escape key
+    useEffect(() => {
+        const handleEsc = (e) => {
+            if (e.key === 'Escape' && showImageModal) setShowImageModal(false);
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [showImageModal]);
 
     // Visual Search Logic
     const openCameraStream = async (deviceId) => {
@@ -356,15 +366,46 @@ export default function PublicPartInfoPage() {
                             
                             {partInfo.SEI_Part_Number ? (
                                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', borderRadius: 8, overflow: 'hidden' }}>
-                                    <img
-                                        src={`/api/files/images/${partInfo.SEI_Part_Number}`}
-                                        alt={partInfo.Part_Name}
-                                        style={{ maxWidth: '100%', maxHeight: 300, objectFit: 'contain' }}
-                                        onError={(e) => {
-                                            e.target.style.display = 'none';
-                                            e.target.nextSibling.style.display = 'flex';
+                                    <div 
+                                        onClick={() => setShowImageModal(true)}
+                                        style={{ 
+                                            cursor: 'zoom-in', 
+                                            position: 'relative',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: '100%',
+                                            height: '100%'
                                         }}
-                                    />
+                                    >
+                                        <img
+                                            src={`/api/files/images/${partInfo.SEI_Part_Number}`}
+                                            alt={partInfo.Part_Name}
+                                            style={{ maxWidth: '100%', maxHeight: 300, objectFit: 'contain', display: 'block' }}
+                                            onError={(e) => {
+                                                e.target.style.display = 'none';
+                                                e.target.parentNode.nextSibling.style.display = 'flex';
+                                            }}
+                                        />
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 8,
+                                            right: 8,
+                                            background: 'rgba(0,0,0,0.55)',
+                                            borderRadius: 6,
+                                            padding: '4px 8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 4,
+                                            color: '#fff',
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            opacity: 0.8,
+                                            transition: 'opacity 0.2s'
+                                        }}>
+                                            <ZoomIn size={12} /> Click to enlarge
+                                        </div>
+                                    </div>
                                     <div style={{ display: 'none', flexDirection: 'column', alignItems: 'center', color: 'var(--text-muted)', padding: 32 }}>
                                         <ImageIcon size={32} style={{ marginBottom: 8, opacity: 0.5 }} />
                                         <p>Image not found</p>
@@ -399,6 +440,86 @@ export default function PublicPartInfoPage() {
                     </div>
                 )}
             </div>
+
+            {/* Image Lightbox Modal */}
+            {showImageModal && partInfo && (
+                <div 
+                    onClick={() => setShowImageModal(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        zIndex: 99999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 24,
+                        cursor: 'zoom-out',
+                        animation: 'fadeIn 0.2s ease'
+                    }}
+                >
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setShowImageModal(false); }}
+                        style={{
+                            position: 'absolute',
+                            top: 16,
+                            right: 16,
+                            background: 'rgba(255,255,255,0.15)',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: 8,
+                            cursor: 'pointer',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                    >
+                        <X size={24} />
+                    </button>
+                    <img
+                        src={`/api/files/images/${partInfo.SEI_Part_Number}`}
+                        alt={partInfo.Part_Name}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            width: '90vw',
+                            height: '85vh',
+                            objectFit: 'contain',
+                            borderRadius: 12,
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                            cursor: 'default',
+                            animation: 'scaleIn 0.25s ease'
+                        }}
+                    />
+                    <div style={{
+                        position: 'absolute',
+                        bottom: 24,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        color: 'rgba(255,255,255,0.6)',
+                        fontSize: 13,
+                        fontWeight: 500,
+                        textAlign: 'center'
+                    }}>
+                        {partInfo.Part_Name} — {partInfo.SEI_Part_Number}
+                    </div>
+                </div>
+            )}
+
+            <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes scaleIn {
+                    from { transform: scale(0.9); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+            `}</style>
         </div>
     );
 }

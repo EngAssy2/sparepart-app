@@ -120,7 +120,7 @@ export default function PartDetailPage() {
                         <div className="card-title" style={{ marginBottom: 8 }}>Location</div>
                         <InfoRow label="Section" value={part.Section} />
                         <InfoRow label="Location" value={part.Location} />
-                        <InfoRow label="Remark" value={part.Remark} />
+                        <InfoRow label="Remark" value={part.Item_Description} />
                     </div>
                 </div>
 
