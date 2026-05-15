@@ -97,6 +97,17 @@ export default function PublicStockOutPage() {
         setItems(updated);
     };
 
+    // Trim a text field in a specific item row on blur
+    const trimItemField = (idx, field) => {
+        setItems(prev => {
+            const updated = [...prev];
+            if (typeof updated[idx][field] === 'string') {
+                updated[idx][field] = updated[idx][field].trim();
+            }
+            return updated;
+        });
+    };
+
     const addItem = () => {
         setItems([...items, { Part_Number: '', Quantity: 1, Section: userSection, Model: '' }]);
     };
@@ -179,7 +190,14 @@ export default function PublicStockOutPage() {
             return;
         }
 
-        const validItems = items.filter(i => i.Part_Number && i.Quantity > 0);
+        // Trim all string fields before processing
+        const trimmedItems = items.map(it => ({
+            ...it,
+            Part_Number: typeof it.Part_Number === 'string' ? it.Part_Number.trim() : it.Part_Number,
+        }));
+        setItems(trimmedItems);
+
+        const validItems = trimmedItems.filter(i => i.Part_Number && i.Quantity > 0);
         if (validItems.length === 0) {
             setErrorMsg('Please add at least one valid item.');
             return;
@@ -277,7 +295,7 @@ export default function PublicStockOutPage() {
                                     className="input"
                                     placeholder="Scan or type badge number"
                                     value={badge}
-                                    onChange={e => setBadge(e.target.value)}
+                                    onChange={e => setBadge(e.target.value.trim())}
                                     autoFocus
                                     autoComplete="off"
                                     style={{
@@ -338,6 +356,7 @@ export default function PublicStockOutPage() {
                                                     placeholder="Part Number"
                                                     value={item.Part_Number}
                                                     onChange={e => updateItem(idx, 'Part_Number', e.target.value)}
+                                                    onBlur={() => trimItemField(idx, 'Part_Number')}
                                                     required
                                                     style={{ flex: 1 }}
                                                 />

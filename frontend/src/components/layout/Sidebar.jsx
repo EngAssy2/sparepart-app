@@ -8,7 +8,7 @@ import {
 
 import siixLogo from '../../assets/Siix-logo.ico';
 
-const LEVEL_NAMES = { 1: 'Super User', 2: 'Admin', 3: 'Supervisor', 4: 'Technician' };
+const LEVEL_NAMES = { 0: 'Super User', 1: 'DCC', 2: 'Admin', 3: 'Supervisor', 4: 'Technician' };
 
 const navItems = [
     {

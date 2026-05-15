@@ -27,6 +27,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Global input sanitizer — trims leading/trailing whitespace & newlines
+// from all string fields in req.body, req.query, and req.params
+const sanitizeInputs = require('./middleware/sanitize');
+app.use(sanitizeInputs);
+
 // Static file serving for uploads
 app.use('/uploads', express.static(UPLOAD_DIR));
 

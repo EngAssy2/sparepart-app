@@ -63,7 +63,8 @@ router.post('/stock-in', verifyToken, async (req, res) => {
         let totalProcessed = 0;
 
         for (const item of items) {
-            const { Part_Number, Quantity, Machine_Name = '', Section = '', Model = '' } = item;
+            const { Quantity, Machine_Name = '', Section = '', Model = '' } = item;
+            const Part_Number = typeof item.Part_Number === 'string' ? item.Part_Number.trim() : item.Part_Number;
             
             if (!Part_Number || !Quantity || Quantity <= 0) {
                 await conn.rollback();
@@ -123,7 +124,8 @@ router.post('/stock-out', verifyToken, async (req, res) => {
         let totalProcessed = 0;
 
         for (const item of items) {
-            const { Part_Number, Quantity, Machine_Name = '', Section = '', Model = '' } = item;
+            const { Quantity, Machine_Name = '', Section = '', Model = '' } = item;
+            const Part_Number = typeof item.Part_Number === 'string' ? item.Part_Number.trim() : item.Part_Number;
             
             if (!Part_Number || !Quantity || Quantity <= 0) {
                 await conn.rollback();

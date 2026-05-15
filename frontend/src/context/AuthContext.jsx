@@ -115,9 +115,10 @@ export function AuthProvider({ children }) {
         window.location.href = '/login';
     };
 
-    // Authority levels: 1=Super User, 2=Admin, 3=Supervisor, 4=Technician
+    // Authority levels: 0=Super User, 1=DCC, 2=Admin, 3=Supervisor, 4=Technician
     const level = user?.Authority_Level ?? 99;
-    const isSuperUser = level === 1;
+    const isSuperUser = level === 0;
+    const isDCC = level <= 1;
     const isAdmin = level <= 2;
     const isSupervisor = level <= 3;
     const isTechnician = level <= 4;

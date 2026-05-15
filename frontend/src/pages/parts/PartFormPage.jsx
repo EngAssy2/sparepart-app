@@ -189,8 +189,15 @@ export default function PartFormPage() {
         if (key === 'Part_Number' && dupError) setDupError('');
     };
 
+    // Trim whitespace/newlines on blur for text fields
+    const handleTextBlur = (key) => {
+        setForm((f) => ({ ...f, [key]: typeof f[key] === 'string' ? f[key].trim() : f[key] }));
+    };
+
     const handlePartNumberBlur = async () => {
-        if (!form.Part_Number) return;
+        // Trim first
+        setForm((f) => ({ ...f, Part_Number: typeof f.Part_Number === 'string' ? f.Part_Number.trim() : f.Part_Number }));
+        if (!form.Part_Number?.trim()) return;
         try {
             const url = isEdit 
                 ? `/parts/check/duplicate?partNumber=${encodeURIComponent(form.Part_Number)}&excludeId=${seiPartNumber}`
@@ -253,20 +260,30 @@ export default function PartFormPage() {
         setShowConfirm(true);
     };
 
+    // Helper: trim all string fields in a form object
+    const trimFormStrings = (obj) => {
+        const cleaned = {};
+        for (const [k, v] of Object.entries(obj)) {
+            cleaned[k] = typeof v === 'string' ? v.trim() : v;
+        }
+        return cleaned;
+    };
+
     const executeSubmit = async () => {
         setShowConfirm(false);
         setSaving(true);
         setError('');
 
         try {
-            let imageFilename = form.Image_Path || null;
-            let datasheetFilename = form.Datasheet_Path || null;
+            const cleanedForm = trimFormStrings(form);
+            let imageFilename = cleanedForm.Image_Path || null;
+            let datasheetFilename = cleanedForm.Datasheet_Path || null;
             let currentSeiPartNumber = seiPartNumber;
 
             if (!isEdit) {
                 const initialPayload = {
-                    ...form,
-                    Location: form.Location,
+                    ...cleanedForm,
+                    Location: cleanedForm.Location,
                     Visual_Embedding: visualEmbedding
                 };
                 const res = await client.post('/parts', initialPayload);
@@ -291,8 +308,8 @@ export default function PartFormPage() {
 
             if (isEdit) {
                 const payload = {
-                    ...form,
-                    Location: form.Location,
+                    ...cleanedForm,
+                    Location: cleanedForm.Location,
                     Visual_Embedding: visualEmbedding
                 };
                 await client.put(`/parts/${currentSeiPartNumber}`, payload);
@@ -400,7 +417,7 @@ export default function PartFormPage() {
                                                     if (!/^\d+$/.test(text)) e.preventDefault();
                                                 } : undefined}
                                                 min={f.type === 'number' ? "0" : undefined}
-                                                onBlur={f.key === 'Part_Number' ? handlePartNumberBlur : undefined}
+                                                onBlur={f.key === 'Part_Number' ? handlePartNumberBlur : (f.type === 'text' ? () => handleTextBlur(f.key) : undefined)}
                                                 placeholder={`Enter ${f.label.toLowerCase()}`}
                                                 required={f.required}
                                                 style={dupError && f.key === 'Part_Number' ? { borderColor: 'var(--danger)' } : {}}

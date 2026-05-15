@@ -43,7 +43,8 @@ router.post('/pr', verifyToken, async (req, res) => {
     try {
         await conn.beginTransaction();
         const now = new Date();
-        const { PR_Number, Remarks, items } = req.body; // items: [{Part_Number, Quantity, Reason}]
+        const { PR_Number: _prNum, Remarks, items } = req.body; // items: [{Part_Number, Quantity, Reason}]
+        const PR_Number = typeof _prNum === 'string' ? _prNum.trim() : _prNum;
 
         if (!PR_Number) {
             await conn.rollback();
@@ -62,7 +63,13 @@ router.post('/pr', verifyToken, async (req, res) => {
         );
 
         if (items && items.length > 0) {
-            const partNumbers = items.map(i => i.Part_Number);
+            // Trim Part_Numbers in items as double protection
+            const cleanedItems = items.map(it => ({
+                ...it,
+                Part_Number: typeof it.Part_Number === 'string' ? it.Part_Number.trim() : it.Part_Number,
+                Reason: typeof it.Reason === 'string' ? it.Reason.trim() : it.Reason,
+            }));
+            const partNumbers = cleanedItems.map(i => i.Part_Number);
             const [masterdataParts] = await conn.query(
                 'SELECT Part_Number FROM masterdata WHERE Part_Number IN (?)',
                 [partNumbers]
@@ -76,7 +83,7 @@ router.post('/pr', verifyToken, async (req, res) => {
                 return res.status(400).json({ error: `The following part numbers do not exist in the database: ${invalidParts.join(', ')}` });
             }
 
-            for (let item of items) {
+            for (let item of cleanedItems) {
                 await conn.query(
                     'INSERT INTO purchase_request_items (PR_Number, Part_Number, Quantity, Reason) VALUES (?,?,?,?)',
                     [PR_Number, item.Part_Number, item.Quantity, item.Reason || '']
@@ -143,8 +150,11 @@ router.post('/po', verifyToken, requireLevel(2), async (req, res) => {
     try {
         await conn.beginTransaction();
         const now = new Date();
-        const { PO_Number, Expected_Delivery, Supplier, Remarks, items, PR_Number } = req.body;
+        const { PO_Number: _poNum, Expected_Delivery, Supplier: _supplier, Remarks, items, PR_Number: _prRef } = req.body;
         // items: [{Part_Number, Quantity, Unit_Price, PR_Item_ID}]
+        const PO_Number  = typeof _poNum    === 'string' ? _poNum.trim()    : _poNum;
+        const Supplier   = typeof _supplier === 'string' ? _supplier.trim() : (_supplier || '');
+        const PR_Number  = typeof _prRef    === 'string' ? _prRef.trim()    : _prRef;
 
         if (!PO_Number) {
             await conn.rollback();
@@ -235,8 +245,11 @@ router.post('/do', verifyToken, requireLevel(3), async (req, res) => {
     try {
         await conn.beginTransaction();
         const now = new Date();
-        const { DO_Number, PO_Number, Supplier_DO_Ref, Remarks, items } = req.body;
+        const { DO_Number: _doNum, PO_Number: _poNum2, Supplier_DO_Ref: _sRef, Remarks, items } = req.body;
         // items: [{PO_Item_ID, Part_Number, Quantity_Delivered, Condition_Status}]
+        const DO_Number      = typeof _doNum  === 'string' ? _doNum.trim()  : _doNum;
+        const PO_Number      = typeof _poNum2 === 'string' ? _poNum2.trim() : _poNum2;
+        const Supplier_DO_Ref = typeof _sRef  === 'string' ? _sRef.trim()   : (_sRef || '');
 
         if (!DO_Number) {
             await conn.rollback();

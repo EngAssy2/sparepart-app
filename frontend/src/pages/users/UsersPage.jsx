@@ -7,8 +7,8 @@ import config from '../../config.json';
 
 const { SectionList, JobLevelList } = config;
 
-const LEVELS = { 1: 'Super User', 2: 'Admin', 3: 'Supervisor', 4: 'Technician' };
-const LEVEL_CLASS = { 1: 'badge-danger', 2: 'badge-warning', 3: 'badge-accent', 4: 'badge-muted' };
+const LEVELS = { 0: 'Super User', 1: 'DCC', 2: 'Admin', 3: 'Supervisor', 4: 'Technician' };
+const LEVEL_CLASS = { 0: 'badge-danger', 1: 'badge-accent', 2: 'badge-warning', 3: 'badge-info', 4: 'badge-muted' };
 
 const emptyUser = { User_Badge: '', User_name: '', User_Section: '', User_Level: '', Authority_Level: 4 };
 
@@ -55,10 +55,14 @@ export default function UsersPage() {
         setSaving(true);
         setError('');
         try {
+            // Trim all string fields before saving
+            const cleanedUser = Object.fromEntries(
+                Object.entries(formUser).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+            );
             if (modal === 'add') {
-                await client.post('/users', formUser);
+                await client.post('/users', cleanedUser);
             } else {
-                await client.put(`/users/${formUser.User_Badge}`, formUser);
+                await client.put(`/users/${cleanedUser.User_Badge}`, cleanedUser);
             }
             fetchUsers();
             closeModal();

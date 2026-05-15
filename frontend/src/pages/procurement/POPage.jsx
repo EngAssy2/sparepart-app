@@ -85,17 +85,21 @@ export default function POPage() {
     const executeCreatePO = async () => {
         setShowCreateConfirm(false);
         const validItems = items.filter(i => i.Part_Number && i.Quantity > 0);
+        // Trim string fields before submitting
+        const cleanPoNumber = poNumber.trim();
+        const cleanSupplier = supplier.trim();
+        const cleanRemarks = remarks.trim();
 
         try {
             const res = await fetch('/api/procurement/po', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
-                    PO_Number: poNumber,
-                    PR_Number: prNumber,
-                    Supplier: supplier,
+                    PO_Number: cleanPoNumber,
+                    PR_Number: prNumber.trim(),
+                    Supplier: cleanSupplier,
                     Expected_Delivery: expectedDate,
-                    Remarks: remarks,
+                    Remarks: cleanRemarks,
                     items: validItems
                 })
             });

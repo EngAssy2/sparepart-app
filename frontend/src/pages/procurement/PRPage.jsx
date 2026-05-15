@@ -73,17 +73,26 @@ export default function PRPage() {
 
     const executeCreatePR = async () => {
         setShowCreateConfirm(false);
-        const validItems = items.filter(i => i.Part_Number && i.Quantity > 0);
+        // Trim string fields before submitting
+        const cleanPrNumber = prNumber.trim();
+        const cleanRemarks = remarks.trim();
+        const validItems = items
+            .filter(i => i.Part_Number && i.Quantity > 0)
+            .map(it => ({
+                ...it,
+                Part_Number: typeof it.Part_Number === 'string' ? it.Part_Number.trim() : it.Part_Number,
+                Reason: typeof it.Reason === 'string' ? it.Reason.trim() : it.Reason,
+            }));
         try {
             const res = await fetch('/api/procurement/pr', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ PR_Number: prNumber, Remarks: remarks, items: validItems })
+                body: JSON.stringify({ PR_Number: cleanPrNumber, Remarks: cleanRemarks, items: validItems })
             });
             if (res.ok) {
                 if (quotationFile) {
                     const fd = new FormData();
-                    fd.append('prNumber', prNumber);
+                    fd.append('prNumber', cleanPrNumber);
                     fd.append('file', quotationFile);
                     try {
                         await fetch('/api/files/quotation', {

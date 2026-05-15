@@ -85,16 +85,20 @@ export default function DOPage() {
     const executeCreateDO = async () => {
         setConfirmModal(false);
         const validItems = itemsToReceive.filter(i => i.Quantity_Delivered > 0);
+        // Trim string fields before submitting
+        const cleanDoNumber = doNumber.trim();
+        const cleanSupplierRef = supplierRef.trim();
+        const cleanRemarks = remarks.trim();
         
         try {
             const res = await fetch('/api/procurement/do', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ 
-                    DO_Number: doNumber,
-                    PO_Number: poNumber, 
-                    Supplier_DO_Ref: supplierRef, 
-                    Remarks: remarks, 
+                    DO_Number: cleanDoNumber,
+                    PO_Number: poNumber.trim(), 
+                    Supplier_DO_Ref: cleanSupplierRef, 
+                    Remarks: cleanRemarks, 
                     items: validItems 
                 })
             });

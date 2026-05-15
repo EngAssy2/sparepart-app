@@ -64,7 +64,8 @@ router.get('/user/:badge', async (req, res) => {
 
 // POST /api/public/stock-out — process multi-item stock out (no auth)
 router.post('/stock-out', async (req, res) => {
-    const { badge, name, items } = req.body;
+    const { badge: _badge, name, items } = req.body;
+    const badge = typeof _badge === 'string' ? _badge.trim() : _badge;
 
     if (!badge) {
         return res.status(400).json({ error: 'Badge number is required.' });
@@ -91,6 +92,8 @@ router.post('/stock-out', async (req, res) => {
         // Validate all items first
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
+            // Per-item trim as double protection
+            if (item.Part_Number) item.Part_Number = item.Part_Number.toString().trim();
             if (!item.Part_Number) {
                 await conn.rollback();
                 return res.status(400).json({ error: `Item ${i + 1}: Part Number is required.` });

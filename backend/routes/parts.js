@@ -172,13 +172,17 @@ router.post('/', verifyToken, requireLevel(2), async (req, res) => {
         const seiPartNumber = await getNextPartNumber(conn);
         const now = new Date();
         const {
-            Part_Number, Part_Name,
+            Part_Number: _partNumber, Part_Name: _partName,
             Model = '', Brand = '', Supplier = '', Section = '',
             Location = '',
             Image_Path = null, Datasheet_Path = null,
             Visual_Embedding = null,
             Remark = ''
         } = req.body;
+
+        // Explicit per-field trim as double protection
+        const Part_Number = typeof _partNumber === 'string' ? _partNumber.trim() : _partNumber;
+        const Part_Name   = typeof _partName   === 'string' ? _partName.trim()   : _partName;
 
         const Item_Description = Remark !== undefined ? Remark : (req.body.Item_Description || '');
         //console.log(`[DEBUG] Registering part. Remark: "${Remark}", Final Item_Description: "${Item_Description}"`);
@@ -243,13 +247,17 @@ router.put('/:id', verifyToken, requireLevel(2), async (req, res) => {
         if (!existing[0]) { await conn.rollback(); return res.status(404).json({ error: 'Part not found.' }); }
 
         const {
-            Part_Number = existing[0].Part_Number,
-            Part_Name = existing[0].Part_Name,
+            Part_Number: _pn = existing[0].Part_Number,
+            Part_Name: _pname = existing[0].Part_Name,
             Model = existing[0].Model, Brand = existing[0].Brand, Supplier = existing[0].Supplier, Section = existing[0].Section,
             Location = existing[0].Location,
             Image_Path = existing[0].Image_Path, Datasheet_Path = existing[0].Datasheet_Path,
             Visual_Embedding = existing[0].Visual_Embedding, Remark
         } = req.body;
+
+        // Explicit per-field trim as double protection
+        const Part_Number = typeof _pn    === 'string' ? _pn.trim()    : _pn;
+        const Part_Name   = typeof _pname === 'string' ? _pname.trim() : _pname;
 
         const Item_Description = Remark !== undefined ? Remark : (req.body.Item_Description || existing[0].Item_Description || '');
         console.log(`[DEBUG] Updating part ${req.params.id}. Remark: "${Remark}", Final Item_Description: "${Item_Description}"`);

@@ -1,111 +1,153 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const pool = require('../config/db');
+const axios = require('axios');
 const { verifyToken, requireLevel } = require('../middleware/auth');
 const router = express.Router();
 
-// All user routes require token
+const CENTRAL_BASE = process.env.CENTRAL_AUTH_BASE_URL;
+const API_KEY = process.env.CENTRAL_AUTH_API_KEY;
+
+// Helper: read admin credentials from env (used for all admin-gated Central API calls)
+function adminCreds() {
+    return {
+        admin_badge: process.env.CENTRAL_ADMIN_BADGE,
+        admin_password: process.env.CENTRAL_ADMIN_PASSWORD,
+    };
+}
+
+// Helper: forward a Central Auth API error to the client
+function forwardError(res, err) {
+    const status = err.response?.status || 502;
+    const message =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        'Central Auth service error.';
+    return res.status(status).json({ error: message });
+}
+
+// All user routes require a valid local JWT
 router.use(verifyToken);
 
+// ─────────────────────────────────────────────
 // GET /api/users
+// Fetches the authorized user list from Central Auth
+// ─────────────────────────────────────────────
 router.get('/', async (req, res) => {
     try {
-        if (req.user.authority_level !== 1) {
-            // Non-super users only see themselves
-            const [rows] = await pool.query(
-                'SELECT User_Badge, User_name, User_Section, User_Level, Authority_Level FROM userlist WHERE User_Badge = ?',
-                [req.user.badge]
-            );
-            return res.json(rows);
+        console.log('[GET /users] req.user =', req.user);
+
+        const centralRes = await axios.post(`${CENTRAL_BASE}/users/list`, {
+            api_key: API_KEY,
+        });
+
+        const users = centralRes.data.users || [];
+        console.log(`[GET /users] Central Auth returned ${users.length} users`);
+
+        // Non-super-users only see their own record
+        // authority_level 0 = Super User (can see all)
+        const level = Number(req.user.authority_level);
+        if (level !== 0) {
+            console.log(`[GET /users] authority_level=${level} — returning own record only`);
+            const own = users.find(u => u.User_Badge === req.user.badge);
+            return res.json(own ? [own] : []);
         }
 
-        const [rows] = await pool.query(
-            'SELECT User_Badge, User_name, User_Section, User_Level, Authority_Level FROM userlist ORDER BY Authority_Level, User_name'
-        );
-        res.json(rows);
+        console.log(`[GET /users] Super User — returning all ${users.length} users`);
+        res.json(users);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error.' });
+        console.error('[GET /users] Error:', err.response?.data || err.message);
+        forwardError(res, err);
     }
 });
 
-// POST /api/users - Create user
-router.post('/', requireLevel(1), async (req, res) => {
+// ─────────────────────────────────────────────
+// POST /api/users — Register new user (Super User only)
+// Proxies to Central Auth /auth/register
+// ─────────────────────────────────────────────
+router.post('/', requireLevel(0), async (req, res) => {
+    const { User_Badge: _badge, User_name: _name, User_Section, User_Level, Authority_Level } = req.body;
+    // Explicit trim as double protection
+    const User_Badge = typeof _badge === 'string' ? _badge.trim() : _badge;
+    const User_name  = typeof _name  === 'string' ? _name.trim()  : _name;
+
+    if (!User_Badge || !User_name || !Authority_Level) {
+        return res.status(400).json({ error: 'Badge, name, and authority level are required.' });
+    }
+
+    // Map Authority_Level number to User_Level string expected by Central API
+    const levelMap = { 1: 'Super User', 2: 'Admin', 3: 'Supervisor', 4: 'Technician' };
+
     try {
-        const { User_Badge, User_name, User_Section, User_Level, Authority_Level } = req.body;
-        const Password = req.body.Password || 'user123';
-        if (!User_Badge || !User_name || !Authority_Level) {
-            return res.status(400).json({ error: 'Badge, name, and authority level required.' });
-        }
-        if (Password.length < 6) {
-            return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-        }
-        const hash = await bcrypt.hash(Password, 10);
-        await pool.query(
-            'INSERT INTO userlist (User_Badge, User_name, User_Section, User_Level, Authority_Level, Password) VALUES (?,?,?,?,?,?)',
-            [User_Badge, User_name, User_Section || '', User_Level || '', parseInt(Authority_Level), hash]
-        );
-        res.status(201).json({ message: 'User created.' });
+        await axios.post(`${CENTRAL_BASE}/auth/register`, {
+            badge_number: User_Badge,
+            name: User_name,
+            department: '', // not available from form; Central Auth may use optional field
+            section: User_Section || '',
+            password: 'user123', // Default password per existing business logic
+            api_key: API_KEY,
+            ...adminCreds(),
+        });
+
+        res.status(201).json({ message: 'User registered successfully.' });
     } catch (err) {
-        if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Badge already exists.' });
-        console.error(err);
-        res.status(500).json({ error: 'Server error.' });
+        forwardError(res, err);
     }
 });
 
-// PUT /api/users/:badge - Update user
+// ─────────────────────────────────────────────
+// PUT /api/users/:badge — Modify user (or reset password)
+// Proxies to Central Auth /auth/modify
+// ─────────────────────────────────────────────
 router.put('/:badge', async (req, res) => {
-    try {
-        if (req.user.authority_level !== 1 && req.user.badge !== req.params.badge) {
-            return res.status(403).json({ error: 'Access denied.' });
-        }
+    const { badge } = req.params;
 
-        const { User_name, User_Section, User_Level, Authority_Level, Password } = req.body;
-        
-        let query, params;
-        if (req.user.authority_level !== 1) {
-            // Non-super users can only update password
-            if (Password) {
-                if (Password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-                const hash = await bcrypt.hash(Password, 10);
-                query = 'UPDATE userlist SET Password=? WHERE User_Badge=?';
-                params = [hash, req.params.badge];
-            } else {
-                return res.json({ message: 'No changes made.' });
-            }
-        } else {
-            if (Password) {
-                if (Password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-                const hash = await bcrypt.hash(Password, 10);
-                query = 'UPDATE userlist SET User_name=?, User_Section=?, User_Level=?, Authority_Level=?, Password=? WHERE User_Badge=?';
-                params = [User_name, User_Section, User_Level, parseInt(Authority_Level), hash, req.params.badge];
-            } else {
-                query = 'UPDATE userlist SET User_name=?, User_Section=?, User_Level=?, Authority_Level=? WHERE User_Badge=?';
-                params = [User_name, User_Section, User_Level, parseInt(Authority_Level), req.params.badge];
-            }
-        }
-        
-        const [result] = await pool.query(query, params);
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found.' });
-        res.json({ message: 'User updated.' });
+    // Non-super-users may only edit themselves
+    if (req.user.authority_level !== 0 && req.user.badge !== badge) {
+        return res.status(403).json({ error: 'Access denied.' });
+    }
+
+    const { User_name, User_Section, User_Level, Authority_Level, Password } = req.body;
+
+    // Detect "reset to default" (sent from UsersPage as Password: 'user123')
+    const isReset = Password === 'user123';
+
+    try {
+        await axios.post(`${CENTRAL_BASE}/auth/modify`, {
+            target_badge: badge,
+            api_key: API_KEY,
+            ...adminCreds(),
+            name: User_name,
+            department: '',
+            section: User_Section || '',
+            reset_password: isReset,
+        });
+
+        res.json({ message: 'User updated successfully.' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error.' });
+        forwardError(res, err);
     }
 });
 
-// DELETE /api/users/:badge
-router.delete('/:badge', requireLevel(1), async (req, res) => {
+// ─────────────────────────────────────────────
+// DELETE /api/users/:badge — Delete user (Super User only)
+// Proxies to Central Auth /auth/delete
+// ─────────────────────────────────────────────
+router.delete('/:badge', requireLevel(0), async (req, res) => {
+    const { badge } = req.params;
+
+    if (badge === req.user.badge) {
+        return res.status(400).json({ error: 'Cannot delete your own account.' });
+    }
+
     try {
-        if (req.params.badge === req.user.badge) {
-            return res.status(400).json({ error: 'Cannot delete your own account.' });
-        }
-        const [result] = await pool.query('DELETE FROM userlist WHERE User_Badge = ?', [req.params.badge]);
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found.' });
-        res.json({ message: 'User deleted.' });
+        await axios.post(`${CENTRAL_BASE}/auth/delete`, {
+            target_badge: badge,
+            api_key: API_KEY,
+            ...adminCreds(),
+        });
+
+        res.json({ message: 'User deleted successfully.' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error.' });
+        forwardError(res, err);
     }
 });
 

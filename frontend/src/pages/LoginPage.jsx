@@ -20,7 +20,7 @@ export default function LoginPage() {
         setLoading(true);
         setError('');
         try {
-            const res = await client.post('/auth/login', { badge: badge.trim(), password: password || undefined });
+            const res = await client.post('/auth/login', { badge: badge.trim(), password: password ? password.trim() : undefined });
             login(res.data.user, res.data.token);
             navigate('/dashboard', { replace: true });
         } catch (err) {
